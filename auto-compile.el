@@ -110,6 +110,7 @@
 
 ;;; Code:
 
+(require 'autoload)
 (require 'bytecomp)
 (require 'cl-lib)
 (require 'packed)
@@ -505,8 +506,11 @@ pretend the byte code file exists.")
         (condition-case byte-compile
             (let ((byte-compile-verbose auto-compile-verbose)
                   (warning-minimum-level
-                   (if auto-compile-display-buffer :warning :error)))
-              (setq success (packed-byte-compile-file file))
+                   (if auto-compile-display-buffer :warning :error))
+                  (after-change-major-mode-hook nil)
+                  (prog-mode-hook nil)
+                  (emacs-lisp-mode-hook nil))
+              (setq success (byte-compile-file file))
               (when buf
                 (with-current-buffer buf
                   (kill-local-variable auto-compile-pretend-byte-compiled))))
@@ -518,10 +522,18 @@ pretend the byte code file exists.")
                    (setq loaddefs (packed-loaddefs-file)))
           (require 'autoload)
           (condition-case autoload
-              (packed-with-loaddefs loaddefs
-                (let ((autoload-modified-buffers
-                       (list (find-buffer-visiting file))))
-                  (autoload-generate-file-autoloads file)))
+              (auto-compile--without-mode-hooks
+                (let ((generated-autoload-file loaddefs)
+                      (autoload-modified-buffers
+                       (list (find-buffer-visiting file)))
+                      (after-change-major-mode-hook nil)
+                      (prog-mode-hook nil)
+                      (emacs-lisp-mode-hook nil))
+                  (prog1 (autoload-generate-file-autoloads file)
+                    (with-current-buffer
+                        (find-buffer-visiting generated-autoload-file)
+                      (save-buffer)
+                      (kill-buffer)))))
             (error
              (message "Generating loaddefs for %s failed" file)
              (setq loaddefs nil))))
